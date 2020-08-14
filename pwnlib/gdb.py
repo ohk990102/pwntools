@@ -296,7 +296,7 @@ def _get_which(ssh=None):
     else:                          return misc.which
 
 def _get_runner(ssh=None):
-    if ssh:                        return ssh.process
+    if ssh or dockerized:          return ssh.process
     elif context.os == 'android':  return adb.process
     else:                          return tubes.process.process
 
@@ -400,7 +400,7 @@ def debug(args, gdbscript=None, exe=None, ssh=None, env=None, sysroot=None, **kw
     >>> io.interactive() # doctest: +SKIP
     >>> io.close()
     """
-    if isinstance(args, six.integer_types + (tubes.process.process, tubes.ssh.ssh_channel)):
+    if isinstance(args, six.integer_types + (tubes.process.process, tubes.ssh.ssh_channel, tubes.dockerized.dockerized_process)):
         log.error("Use gdb.attach() to debug a running process")
 
     if isinstance(args, (bytes, six.text_type)):
@@ -674,6 +674,16 @@ def attach(target, gdbscript = '', exe = None, gdb_args = None, ssh = None, sysr
                                        target.pid,
                                        tmpfile)]
 
+        misc.run_in_new_terminal(' '.join(cmd))
+        return
+    elif isinstance(target, tubes.dockerized.dockerized_process):
+        if not target.pid:
+            log.error("PID unknown for channel")
+        
+        cmd_container = ["gdbserver", "--attach", "localhost:1234", str(target.pid)]
+        target.parent.run(cmd_container, privileged = True)
+
+        cmd = ["gdb", "-q", "--init-eval-command", "'target remote %s:%i'" % (target.parent.host, 1234)]
         misc.run_in_new_terminal(' '.join(cmd))
         return
 
